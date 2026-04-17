@@ -10,14 +10,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4   # ✅ อัปเดต
 
-      - uses: actions/setup-python@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5   # ✅ อัปเดต
         with:
           python-version: "3.12"
 
-      - uses: browser-actions/setup-chrome@v1
+      - name: Setup Chrome
+        uses: browser-actions/setup-chrome@v2   # ✅ อัปเดต
 
-      - run: pip install selenium webdriver-manager
+      - name: Install dependencies
+        run: pip install selenium webdriver-manager
 
-      - run: python scraper.py
+      - name: Run scraper
+        run: python scraper.py
