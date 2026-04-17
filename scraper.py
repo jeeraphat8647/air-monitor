@@ -1,23 +1,8 @@
-def get_data(driver):
-
-    popup = WebDriverWait(driver,10).until(
-        EC.presence_of_element_located(
-            (By.CLASS_NAME,"leaflet-popup-content"))
-    )
-
-    text = popup.text
-
-    station = text.split("\n")[0]
-
-    # ===== FIX DATE TIME (FINAL) =====
-    datetime_match = re.search(from selenium import webdriver
+from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.service import Service
-
-from webdriver_manager.chrome import ChromeDriverManager
 
 import csv
 import os
@@ -28,9 +13,7 @@ import time
 # ================= CONFIG =================
 URL = "http://182.52.103.224/"
 
-# ===== SAVE LOCAL (SERVER SAFE) =====
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
+BASE_DIR = os.getcwd()  # ใช้ path ของ server (GitHub)
 DATA_DIR = os.path.join(BASE_DIR, "data")
 LOG_DIR = os.path.join(BASE_DIR, "log")
 
@@ -49,9 +32,8 @@ def write_log(msg):
     with open(LOG_PATH, "a", encoding="utf-8") as f:
         f.write(line + "\n")
 
-# ================= LOAD SAVED RECORDS =================
+# ================= LOAD SAVED =================
 def get_saved_records():
-
     records = set()
 
     if not os.path.exists(CSV_PATH):
@@ -67,20 +49,20 @@ def get_saved_records():
 
     return records
 
-# ================= EXTRACT DATA =================
+# ================= GET DATA =================
 def get_data(driver):
 
-    popup = WebDriverWait(driver,10).until(
-        EC.presence_of_element_located(
-            (By.CLASS_NAME,"leaflet-popup-content"))
+    popup = WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.CLASS_NAME, "leaflet-popup-content"))
     )
 
     text = popup.text
+
     station = text.split("\n")[0]
 
-    # ===== FIX DATE TIME =====
+    # ✅ FIX REGEX (ตัวที่ error คุณ)
     datetime_match = re.search(
-        r"อัพเดทข้อมูลเวลา\s*(.+)", text
+        r"อัพเดทข้อมูลเวลา\s*(.+?\d{2}:\d{2})", text
     )
 
     date = ""
@@ -88,21 +70,11 @@ def get_data(driver):
 
     if datetime_match:
         dt_text = datetime_match.group(1)
+        parts = dt_text.rsplit(" ", 1)
 
-        # ตัดวันที่ถึง 2569
-        date_match = re.search(r"(.*?2569)", dt_text)
-        date = date_match.group(1).strip() if date_match else ""
+        date = parts[0]
+        time_data = parts[1]
 
-        # ดึงเวลา (0830 หรือ 08:30)
-        time_match = re.search(r"2569\s*(\d{4}|\d{2}:\d{2})", dt_text)
-
-        if time_match:
-            time_data = time_match.group(1)
-
-            if re.fullmatch(r"\d{4}", time_data):
-                time_data = time_data[:2] + ":" + time_data[2:]
-
-    # ===== VALUE =====
     benzene_match = re.search(r"เบนซีน\s*([\d\.]+)", text)
     butadiene_match = re.search(r"1,3-บิวทาไดอีน\s*([\d\.]+)", text)
 
@@ -113,18 +85,15 @@ def get_data(driver):
 
 # ================= DRIVER =================
 def create_driver():
-
     options = Options()
     options.add_argument("--headless=new")
+    options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
 
-    driver = webdriver.Chrome(
-        service=Service(ChromeDriverManager().install()),
-        options=options
-    )
+    driver = webdriver.Chrome(options=options)
+    driver.set_window_size(1920, 1080)
 
-    driver.set_window_size(1920,1080)
     return driver
 
 # ================= MAIN =================
@@ -132,11 +101,11 @@ def main():
 
     file_exists = os.path.isfile(CSV_PATH)
 
-    csv_file = open(CSV_PATH,"a",newline="",encoding="utf-8-sig")
+    csv_file = open(CSV_PATH, "a", newline="", encoding="utf-8-sig")
     writer = csv.writer(csv_file)
 
     if not file_exists:
-        writer.writerow(["station","date","time","benzene","butadiene"])
+        writer.writerow(["station", "date", "time", "benzene", "butadiene"])
 
     saved_records = get_saved_records()
 
@@ -145,35 +114,33 @@ def main():
     driver = None
 
     try:
-
         driver = create_driver()
         driver.get(URL)
 
-        wait = WebDriverWait(driver,20)
+        wait = WebDriverWait(driver, 20)
 
         wait.until(
-            EC.presence_of_element_located(
-                (By.CLASS_NAME,"leaflet-marker-icon"))
+            EC.presence_of_element_located((By.CLASS_NAME, "leaflet-marker-icon"))
         )
 
-        markers = driver.find_elements(By.CLASS_NAME,"leaflet-marker-icon")
+        markers = driver.find_elements(By.CLASS_NAME, "leaflet-marker-icon")
 
-        success_count = 0
+        success = 0
 
         for i in range(len(markers)):
 
             try:
-                markers = driver.find_elements(By.CLASS_NAME,"leaflet-marker-icon")
+                markers = driver.find_elements(By.CLASS_NAME, "leaflet-marker-icon")
                 marker = markers[i]
 
                 driver.execute_script("arguments[0].click();", marker)
                 time.sleep(1)
 
-                station,date,time_data,benzene,butadiene = get_data(driver)
+                station, date, time_data, benzene, butadiene = get_data(driver)
 
-                current_key = f"{station}_{date}_{time_data}"
+                key = f"{station}_{date}_{time_data}"
 
-                if current_key in saved_records:
+                if key in saved_records:
                     write_log(f"⏩ Skip: {station}")
                     continue
 
@@ -181,24 +148,18 @@ def main():
                     write_log(f"⚠️ No data: {station}")
                     continue
 
-                writer.writerow([
-                    station,
-                    date,
-                    time_data,
-                    benzene,
-                    butadiene
-                ])
-
+                writer.writerow([station, date, time_data, benzene, butadiene])
                 csv_file.flush()
-                saved_records.add(current_key)
-                success_count += 1
 
-                write_log(f"✅ {station} | {date} {time_data}")
+                saved_records.add(key)
+                success += 1
+
+                write_log(f"✅ {station} | BZ={benzene} | BD={butadiene}")
 
             except Exception as e:
                 write_log(f"❌ Marker error: {e}")
 
-        write_log(f"🎯 Saved {success_count} stations")
+        write_log(f"🎯 Done | Saved {success} stations")
 
     except Exception as e:
         write_log(f"❌ MAIN ERROR: {e}")
@@ -208,7 +169,9 @@ def main():
         if driver:
             driver.quit()
 
-# ================= RUN LOOP (24/7) =================
+        write_log("🛑 END")
+
+# ================= ENTRY =================
 if __name__ == "__main__":
     write_log("🚀 START SERVICE")
 
@@ -216,33 +179,3 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         write_log(f"❌ ERROR: {e}")
-
-
-    date = ""
-    time_data = ""
-
-    if datetime_match:
-        dt_text = datetime_match.group(1)
-
-        # ✅ ตัดวันที่จนถึงปี 2569
-        date_match = re.search(r"(.*?2569)", dt_text)
-        date = date_match.group(1).strip() if date_match else ""
-
-        # ✅ ดึงเวลา (รองรับ 0830 หรือ 08:30)
-        time_match = re.search(r"2569\s*(\d{4}|\d{2}:\d{2})", dt_text)
-
-        if time_match:
-            time_data = time_match.group(1)
-
-            # แปลง 0830 → 08:30
-            if re.fullmatch(r"\d{4}", time_data):
-                time_data = time_data[:2] + ":" + time_data[2:]
-
-    # ===== VALUE =====
-    benzene_match = re.search(r"เบนซีน\s*([\d\.]+)", text)
-    butadiene_match = re.search(r"1,3-บิวทาไดอีน\s*([\d\.]+)", text)
-
-    benzene = float(benzene_match.group(1)) if benzene_match else None
-    butadiene = float(butadiene_match.group(1)) if butadiene_match else None
-
-    return station, date, time_data, benzene, butadiene
